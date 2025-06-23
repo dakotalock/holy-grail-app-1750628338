@@ -1,0 +1,970 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sculpting Emergence: The Generative Canvas</title>
+    <!-- Tailwind CSS CDN for rapid styling -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        /* Custom CSS to override/supplement Tailwind and for specific layout needs */
+        html, body {
+            margin: 0;
+            padding: 0;
+            overflow: hidden; /* Prevent scrollbars */
+            width: 100%;
+            height: 100%;
+            font-family: 'Inter', sans-serif; /* A modern, clean font choice */
+            background-color: #000; /* Ensures a dark background for the canvas */
+        }
+        #canvas-container {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            z-index: 10; /* Canvas is behind UI elements */
+        }
+        canvas {
+            display: block;
+            width: 100%;
+            height: 100%;
+            outline: none; /* Remove focus outline for cleaner look */
+        }
+        .control-overlay {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            z-index: 20; /* UI overlay on top of canvas */
+            pointer-events: none; /* Allows clicks to pass through by default to the canvas */
+        }
+        .control-panel {
+            pointer-events: all; /* Re-enable pointer events for the panel itself */
+            background-color: rgba(10, 10, 10, 0.9); /* Semi-transparent dark background */
+            backdrop-filter: blur(8px); /* Frosted glass effect */
+            border-right: 1px solid rgba(255, 255, 255, 0.1); /* Subtle border for definition */
+            transform: translateX(-100%); /* Hidden by default, slides in from left */
+            transition: transform 0.3s ease-out; /* Smooth transition for panel reveal */
+            overflow-y: auto; /* Allows scrolling for many parameters */
+        }
+        .control-panel.is-open {
+            transform: translateX(0); /* Panel is visible */
+        }
+        .toggle-button {
+            pointer-events: all; /* Button is always clickable */
+            background-color: rgba(20, 20, 20, 0.7);
+            backdrop-filter: blur(5px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            transition: background-color 0.2s;
+        }
+        .toggle-button:hover {
+            background-color: rgba(30, 30, 30, 0.9);
+        }
+        .feedback-overlay {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            z-index: 30; /* Feedback on top of everything */
+            pointer-events: none; /* Essential for passing interaction to canvas */
+        }
+        .feedback-ripple {
+            position: absolute;
+            border-radius: 50%;
+            background-color: rgba(255, 255, 255, 0.5); /* White, semi-transparent ripple */
+            animation: ripple-fade 0.6s ease-out forwards; /* Animation for ripple effect */
+            transform: scale(0); /* Start scaled down */
+        }
+        @keyframes ripple-fade {
+            from {
+                transform: scale(0);
+                opacity: 0.5;
+            }
+            to {
+                transform: scale(2); /* Expand */
+                opacity: 0; /* Fade out */
+            }
+        }
+        .feedback-text {
+            position: absolute;
+            color: white;
+            font-size: 0.9rem;
+            background-color: rgba(0, 0, 0, 0.6);
+            padding: 4px 8px;
+            border-radius: 4px;
+            opacity: 0;
+            animation: text-fade 1.5s ease-out forwards; /* Animation for text feedback */
+            pointer-events: none;
+            white-space: nowrap; /* Prevent text wrapping */
+        }
+        @keyframes text-fade {
+            0% { opacity: 1; transform: translateY(0); }
+            50% { opacity: 1; transform: translateY(-10px); }
+            100% { opacity: 0; transform: translateY(-20px); }
+        }
+    </style>
+</head>
+<body class="bg-black text-gray-100">
+    <div id="canvas-container" aria-label="Generative Canvas">
+        <!-- The WebGL canvas will be dynamically injected here by Three.js -->
+    </div>
+
+    <div class="control-overlay">
+        <!-- Toggle Button for Control Panel -->
+        <button id="toggle-panel-btn" class="toggle-button absolute top-4 left-4 p-3 rounded-full shadow-lg text-white text-xl focus:outline-none focus:ring-2 focus:ring-blue-500" aria-label="Toggle Control Panel">
+            ☰
+        </button>
+
+        <!-- Control Panel: Slides out from the left -->
+        <div id="control-panel" class="control-panel fixed h-full w-64 p-6 flex flex-col space-y-6 shadow-2xl">
+            <h2 class="text-xl font-bold text-white mb-4">Sculpting Emergence</h2>
+
+            <!-- Generative Model Selector -->
+            <div>
+                <label for="model-select" class="block text-sm font-medium text-gray-300 mb-1">Generative Model</label>
+                <select id="model-select" class="w-full p-2 rounded bg-gray-700 border border-gray-600 text-white focus:outline-none focus:ring-2 focus:ring-blue-500" aria-label="Select Generative Model">
+                    <option value="particles">Particle System</option>
+                    <!-- Future models can be added here, e.g., <option value="reaction-diffusion" disabled>Reaction-Diffusion (WIP)</option> -->
+                </select>
+            </div>
+
+            <!-- Parameters Sliders: Dynamically populated based on the selected model -->
+            <div id="parameter-controls" class="space-y-4 flex-grow overflow-y-auto pr-2">
+                <!-- Sliders for generative model parameters will be injected here by JavaScript -->
+            </div>
+
+            <!-- Global Settings -->
+            <div class="mt-auto pt-4 border-t border-gray-700">
+                <h3 class="text-lg font-semibold text-white mb-2">Global Settings</h3>
+                <div>
+                    <label for="master-volume" class="block text-sm font-medium text-gray-300 mb-1">Master Volume</label>
+                    <input type="range" id="master-volume" min="0" max="1" step="0.01" value="0.5" class="w-full h-2 bg-gray-600 rounded-lg appearance-none cursor-pointer" aria-label="Master Audio Volume">
+                </div>
+            </div>
+
+            <!-- Composition Management & Exploration Tools -->
+            <div class="grid grid-cols-2 gap-3 mt-4">
+                <button id="save-btn" class="bg-blue-600 hover:bg-blue-700 text-white py-2 px-4 rounded focus:outline-none focus:ring-2 focus:ring-blue-500" aria-label="Save Composition">Save</button>
+                <button id="load-btn" class="bg-blue-600 hover:bg-blue-700 text-white py-2 px-4 rounded focus:outline-none focus:ring-2 focus:ring-blue-500" aria-label="Load Composition">Load</button>
+                <button id="randomize-btn" class="bg-purple-600 hover:bg-purple-700 text-white py-2 px-4 rounded focus:outline-none focus:ring-2 focus:ring-purple-500" aria-label="Randomize Parameters">Randomize</button>
+                <button id="reset-btn" class="bg-red-600 hover:bg-red-700 text-white py-2 px-4 rounded focus:outline-none focus:ring-2 focus:ring-red-500" aria-label="Reset Parameters">Reset</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Feedback Overlay: Displays ripples and text feedback directly on the canvas -->
+    <div id="feedback-overlay" class="feedback-overlay"></div>
+
+    <!-- Three.js CDN for 3D graphics rendering -->
+    <script async src="https://cdnjs.cloudflare.com/ajax/libs/three.js/0.160.1/three.min.js"></script>
+    <!-- Tone.js CDN for advanced Web Audio API functionality -->
+    <script async src="https://cdnjs.cloudflare.com/ajax/libs/tone/14.8.49/Tone.min.js"></script>
+
+    <script type="module">
+        /**
+         * Wait for DOM content and external libraries (Three.js, Tone.js) to load.
+         * This ensures all necessary components are available before initializing the app.
+         * Includes a simple retry mechanism for CDN dependencies.
+         */
+        window.addEventListener('DOMContentLoaded', async () => {
+            let retries = 0;
+            const maxRetries = 10;
+            const checkLibs = async () => {
+                // Check if Three.js and Tone.js global objects are defined
+                if (typeof THREE === 'undefined' || typeof Tone === 'undefined') {
+                    if (retries < maxRetries) {
+                        retries++;
+                        console.warn(`Three.js or Tone.js not loaded. Retrying in 100ms... (Attempt ${retries}/${maxRetries})`);
+                        await new Promise(resolve => setTimeout(resolve, 100));
+                        await checkLibs(); // Recursive call to re-check
+                    } else {
+                        console.error('Failed to load Three.js or Tone.js after multiple attempts. Please check CDN links or network.');
+                        alert('Application failed to load necessary libraries. Please check your internet connection.');
+                    }
+                } else {
+                    initApp(); // All libraries loaded, proceed with app initialization
+                }
+            };
+            await checkLibs();
+        });
+
+        /**
+         * Main application initialization function.
+         * Encapsulates all core logic and component instantiation.
+         */
+        function initApp() {
+            /**
+             * Global State Management (Simplified Zustand/Jotai-like)
+             * Manages all application parameters in a single, reactive store.
+             * This ensures all components react to changes in a unified way.
+             */
+            const DEFAULT_STATE = {
+                particles: {
+                    count: 100000, // Fixed particle count for performance in this demo
+                    size: 0.005, // Visual size of particles
+                    maxSpeed: 0.01, // Conceptual max speed (not directly used for movement in current shader)
+                    forceStrength: 0.0001, // Base strength of the interaction force, adjusted by gesture
+                    decayRate: 0.99, // Conceptual decay rate (not directly used for movement in current shader)
+                    attractionRadius: 0.1, // Radius for attraction effect around force point
+                    repulsionRadius: 0.02, // Radius for repulsion effect (not explicitly used in current color logic)
+                    colorStart: [1.0, 0.0, 0.5], // RGB color for particles far from force point (magenta-ish)
+                    colorEnd: [0.0, 0.5, 1.0], // RGB color for particles near force point (cyan-ish)
+                    forcePoint: new THREE.Vector3(0, 0, 0) // World space coordinates of the interactive force point
+                },
+                activeModel: 'particles', // Currently active generative model
+                audio: {
+                    masterVolume: 0.5,
+                    particleDensityToGrainRate: 0.000002, // Mapping factor: higher visual density -> lower grain size (denser sound)
+                    particleSpeedToPitch: 100, // Cents mapping: force strength influences audio pitch
+                    forcePointZToFilterFreq: 1000 // Hz mapping: force point depth (Z) influences filter cutoff frequency
+                },
+                isPanelOpen: false, // UI panel visibility state
+            };
+
+            // Initialize state with a deep copy of default to prevent direct mutation of DEFAULT_STATE
+            let state = JSON.parse(JSON.stringify(DEFAULT_STATE));
+
+            // Simple event emitter for state changes, allowing components to subscribe
+            const subscribers = new Set();
+            const subscribe = (callback) => {
+                subscribers.add(callback);
+                return () => subscribers.delete(callback); // Returns an unsubscribe function
+            };
+            const setState = (newState) => {
+                // Deep merge for nested objects like 'particles' and 'audio'
+                if (newState.particles) {
+                    state.particles = { ...state.particles, ...newState.particles };
+                }
+                if (newState.audio) {
+                    state.audio = { ...state.audio, ...newState.audio };
+                }
+                // Assign top-level properties (e.g., activeModel, isPanelOpen)
+                Object.assign(state, newState);
+                // Notify all subscribers of the state change
+                subscribers.forEach(callback => callback(state));
+            };
+
+            /**
+             * WebGL2 (Three.js) Generative Visual Engine
+             * Handles rendering of visual patterns and GPU-accelerated particle visualization.
+             * For this demo, particle positions are static, but their visual properties (color, size)
+             * react dynamically to the interaction point via GLSL shaders.
+             */
+            class VisualEngine {
+                constructor(container) {
+                    this.container = container;
+                    this.scene = new THREE.Scene();
+                    // Camera setup: Perspective camera looking at the origin
+                    this.camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.01, 100);
+                    this.camera.position.z = 1; // Position camera to view particles around origin
+
+                    // WebGL Renderer setup
+                    this.renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+                    this.renderer.setPixelRatio(window.devicePixelRatio); // For sharper rendering on high-DPI screens
+                    this.renderer.setSize(window.innerWidth, window.innerHeight);
+                    this.container.appendChild(this.renderer.domElement); // Add canvas to DOM
+
+                    this.particles = null;
+                    this.particleGeometry = null;
+                    this.particleMaterial = null;
+                    this.setupParticles(state.particles.count); // Initialize particle system
+
+                    // Event listeners for responsiveness and state changes
+                    window.addEventListener('resize', this.onWindowResize.bind(this));
+                    subscribe(this.onStateChange.bind(this));
+                }
+
+                /**
+                 * Sets up the particle system geometry and shader material.
+                 * Particle positions are randomized once at initialization.
+                 */
+                setupParticles(particleCount) {
+                    this.particleGeometry = new THREE.BufferGeometry();
+                    const positions = new Float32Array(particleCount * 3); // XYZ for each particle
+                    const colors = new Float32Array(particleCount * 3); // RGB for each particle's base color
+
+                    for (let i = 0; i < particleCount; i++) {
+                        // Initial positions: randomly distributed within a small cube to create a cloud
+                        positions[i * 3 + 0] = (Math.random() - 0.5) * 0.8;
+                        positions[i * 3 + 1] = (Math.random() - 0.5) * 0.8;
+                        positions[i * 3 + 2] = (Math.random() - 0.5) * 0.8;
+
+                        // Initial colors: random RGB for variety
+                        colors[i * 3 + 0] = Math.random();
+                        colors[i * 3 + 1] = Math.random();
+                        colors[i * 3 + 2] = Math.random();
+                    }
+
+                    // Set attributes for the particle geometry
+                    this.particleGeometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+                    this.particleGeometry.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+
+                    // Define the custom shader material for particles
+                    this.particleMaterial = new THREE.ShaderMaterial({
+                        uniforms: {
+                            uTime: { value: 0.0 }, // Time uniform for potential animations
+                            uParticleSize: { value: state.particles.size }, // Size of each particle
+                            uForcePoint: { value: new THREE.Vector3().copy(state.particles.forcePoint) }, // 3D point of interaction
+                            uAttractionRadius: { value: state.particles.attractionRadius }, // Radius for color blending
+                            uColorStart: { value: new THREE.Color(...state.particles.colorStart) }, // Color when far from force point
+                            uColorEnd: { value: new THREE.Color(...state.particles.colorEnd) }, // Color when near force point
+                            resolution: { value: new THREE.Vector2(window.innerWidth, window.innerHeight) } // Screen resolution for fragment shader calculations
+                        },
+                        vertexShader: `
+                            // Attributes received from BufferGeometry
+                            attribute vec3 color; // Base color of the particle
+
+                            // Uniforms (global variables passed from JavaScript)
+                            uniform float uParticleSize;
+                            uniform vec3 uForcePoint;
+                            uniform float uAttractionRadius;
+
+                            // Varying variables (passed from vertex to fragment shader)
+                            varying vec3 vParticleColor;
+                            varying float vDistanceToForcePoint;
+
+                            void main() {
+                                // Calculate distance from the particle's position to the interactive force point
+                                vDistanceToForcePoint = distance(position, uForcePoint);
+
+                                // Pass the particle's base color to the fragment shader
+                                vParticleColor = color;
+
+                                // Standard Three.js point rendering: calculate screen position and size
+                                vec4 mvPosition = modelViewMatrix * vec4(position, 1.0);
+                                // Adjust point size based on distance from camera for perspective effect
+                                gl_PointSize = uParticleSize * (800.0 / -mvPosition.z);
+                                // Project the particle's position onto the screen
+                                gl_Position = projectionMatrix * mvPosition;
+                            }
+                        `,
+                        fragmentShader: `
+                            // Uniforms from JavaScript
+                            uniform vec3 uColorStart;
+                            uniform vec3 uColorEnd;
+                            uniform float uAttractionRadius;
+
+                            // Varying variables from vertex shader
+                            varying vec3 vParticleColor;
+                            varying float vDistanceToForcePoint;
+
+                            void main() {
+                                // Discard pixels outside the circle for rendering circular point sprites
+                                float r = length(gl_PointCoord - 0.5);
+                                if (r > 0.5) discard;
+
+                                // Dynamically mix colors based on distance to the force point
+                                // Particles closer to the force point will blend towards uColorEnd,
+                                // while those further away will stay closer to uColorStart.
+                                float mixFactor = smoothstep(0.0, uAttractionRadius * 2.0, vDistanceToForcePoint);
+                                vec3 finalColor = mix(uColorEnd, uColorStart, mixFactor); // Note: mix order reversed for intuitive mapping
+
+                                // Apply a subtle radial fade and overall transparency based on distance
+                                float alpha = (1.0 - r * r) * (1.0 - mixFactor * 0.5); // Fade at edges and slightly based on distance
+                                gl_FragColor = vec4(finalColor, alpha);
+                            }
+                        `,
+                        transparent: true, // Enable transparency
+                        blending: THREE.AdditiveBlending // Use additive blending for glowing, emergent effects
+                    });
+
+                    this.particles = new THREE.Points(this.particleGeometry, this.particleMaterial);
+                    this.scene.add(this.particles);
+                }
+
+                /**
+                 * Updates uniforms and other visual properties based on global state changes.
+                 * This method is called whenever setState is invoked.
+                 */
+                onStateChange(newState) {
+                    if (this.particles && this.particleMaterial) {
+                        const p = newState.particles;
+                        this.particleMaterial.uniforms.uParticleSize.value = p.size;
+                        this.particleMaterial.uniforms.uAttractionRadius.value = p.attractionRadius;
+                        this.particleMaterial.uniforms.uForcePoint.value.copy(p.forcePoint); // Update THREE.Vector3 uniform
+                        this.particleMaterial.uniforms.uColorStart.value.setRGB(...p.colorStart);
+                        this.particleMaterial.uniforms.uColorEnd.value.setRGB(...p.colorEnd);
+                    }
+                }
+
+                /**
+                 * Handles window resizing to maintain correct aspect ratio and renderer size.
+                 */
+                onWindowResize() {
+                    this.camera.aspect = window.innerWidth / window.innerHeight;
+                    this.camera.updateProjectionMatrix();
+                    this.renderer.setSize(window.innerWidth, window.innerHeight);
+                    if (this.particleMaterial && this.particleMaterial.uniforms.resolution) {
+                        this.particleMaterial.uniforms.resolution.value.set(window.innerWidth, window.innerHeight);
+                    }
+                }
+
+                /**
+                 * Renders the scene for each animation frame.
+                 * @param {number} deltaTime - Time elapsed since the last frame in seconds.
+                 */
+                render(deltaTime) {
+                    if (this.particleMaterial) {
+                        this.particleMaterial.uniforms.uTime.value += deltaTime;
+                    }
+                    this.renderer.render(this.scene, this.camera);
+                }
+            }
+
+            /**
+             * Generative Audio Engine (Tone.js)
+             * Dynamically evolves an ambient soundscape in synchronicity with visual output.
+             */
+            class AudioEngine {
+                constructor() {
+                    this.initialized = false;
+                    this.grainPlayer = null;
+                    this.reverb = null;
+                    this.filter = null;
+                    this.gainNode = null;
+
+                    // A subtle ambient loop for granular synthesis, reflecting the 'ambient soundscape' goal
+                    this.audioSampleUrl = 'https://tonejs.github.io/audio/ambience/tone-loop.wav';
+
+                    // Web Audio API requires user interaction to start the audio context
+                    const startAudio = () => {
+                        this.initAudioContext();
+                        // Remove event listeners once audio context is started
+                        document.documentElement.removeEventListener('pointerdown', startAudio);
+                        document.documentElement.removeEventListener('keydown', startAudio);
+                    };
+                    document.documentElement.addEventListener('pointerdown', startAudio, { once: true });
+                    document.documentElement.addEventListener('keydown', startAudio, { once: true });
+
+                    subscribe(this.onStateChange.bind(this)); // Subscribe to global state changes
+                }
+
+                /**
+                 * Initializes the Web Audio Context and Tone.js components.
+                 */
+                async initAudioContext() {
+                    if (this.initialized) return;
+                    try {
+                        await Tone.start(); // Start the Tone.js audio context
+                        console.log('AudioContext started');
+
+                        // Setup audio effects chain: GrainPlayer -> Gain -> Filter -> Reverb -> Destination
+                        this.reverb = new Tone.Reverb({ decay: 5, preDelay: 0.1 }).toDestination();
+                        this.reverb.wet.value = 0.5; // Moderate reverb wetness
+                        this.filter = new Tone.Filter(200, "lowpass").connect(this.reverb); // Lowpass filter
+                        this.gainNode = new Tone.Gain(state.audio.masterVolume).connect(this.filter); // Master volume control
+
+                        // Initialize the Granular Player with an audio sample
+                        this.grainPlayer = new Tone.GrainPlayer(this.audioSampleUrl, () => {
+                            this.grainPlayer.loop = true; // Loop the sample continuously
+                            this.grainPlayer.playbackRate = 0.5; // Initial slower playback rate
+                            this.grainPlayer.grainSize = 0.1; // Initial grain size
+                            this.grainPlayer.overlap = 0.05; // Overlap between grains for smoother sound
+                            this.grainPlayer.start(); // Start playback
+                            console.log('GrainPlayer loaded and started');
+                        }).connect(this.gainNode);
+
+                        this.initialized = true;
+                    } catch (e) {
+                        console.error("Failed to start AudioContext:", e);
+                        alert("Could not start audio. Please allow audio playback in your browser.");
+                    }
+                }
+
+                /**
+                 * Updates audio parameters based on global state changes from visual parameters.
+                 * This demonstrates the crucial synchronization and mapping.
+                 * @param {object} newState - The updated global application state.
+                 */
+                onStateChange(newState) {
+                    if (!this.initialized) return;
+
+                    // Update master volume smoothly
+                    if (this.gainNode) {
+                        this.gainNode.gain.linearRampToValueAtTime(newState.audio.masterVolume, Tone.now() + 0.1);
+                    }
+
+                    // Map visual parameters (from particles) to audio parameters
+                    const p = newState.particles;
+
+                    // Map particle size to grain playback rate (influences pitch)
+                    // Larger particles result in a higher pitch, creating a "swell" effect.
+                    const sizeToPitchFactor = (p.size - DEFAULT_STATE.particles.size) / (DEFAULT_STATE.particles.size * 2); // Normalize around default size
+                    const pitchShiftCents = sizeToPitchFactor * newState.audio.particleSpeedToPitch; // Max shift in cents
+                    this.grainPlayer.playbackRate.linearRampToValueAtTime(Tone.intervalToFrequencyRatio(pitchShiftCents / 1200), Tone.now() + 0.1);
+
+                    // Map force strength to grain size (influences texture density)
+                    // Higher force strength (more active interaction) leads to smaller grains and a denser, more granular sound.
+                    const forceStrengthNormalized = (p.forceStrength - DEFAULT_STATE.particles.forceStrength) / (DEFAULT_STATE.particles.forceStrength * 4); // Normalize
+                    const grainSize = Math.max(0.01, 0.2 - (forceStrengthNormalized * 0.15)); // Map to a range (e.g., 0.01s to 0.2s)
+                    this.grainPlayer.grainSize = grainSize; // Direct assignment for grainPlayer's grainSize is fine
+
+                    // Map force point Z-depth to filter cutoff frequency
+                    // Pushing "into" the screen (negative Z) lowers the filter frequency (darker sound);
+                    // Pulling "out" (positive Z) raises it (brighter sound).
+                    const forceZNormalized = (p.forcePoint.z - DEFAULT_STATE.particles.forcePoint.z) / (DEFAULT_STATE.particles.forcePoint.z * 2); // Normalize around default
+                    const filterFreq = 100 + (forceZNormalized * newState.audio.forcePointZToFilterFreq); // Base 100Hz, shift by up to 1000Hz
+                    this.filter.frequency.linearRampToValueAtTime(Math.max(20, Math.min(20000, filterFreq)), Tone.now() + 0.1);
+                }
+            }
+
+            /**
+             * Intuitive Gestural Input System & Rule Manipulation Engine
+             * Captures mouse/touch gestures and translates them into abstract rule modifications
+             * for both visual and audio parameters.
+             */
+            class InputManager {
+                constructor(canvasElement, visualEngine, audioEngine) {
+                    this.canvas = canvasElement;
+                    this.visualEngine = visualEngine;
+                    this.audioEngine = audioEngine;
+
+                    this.isDragging = false;
+                    this.lastPointerPos = { x: 0, y: 0 };
+                    this.currentPointerPos = { x: 0, y: 0 };
+                    this.pointerDownTime = 0;
+
+                    // Event listeners for mouse and touch interactions
+                    this.canvas.addEventListener('pointerdown', this.onPointerDown.bind(this));
+                    this.canvas.addEventListener('pointermove', this.onPointerMove.bind(this));
+                    this.canvas.addEventListener('pointerup', this.onPointerUp.bind(this));
+                    this.canvas.addEventListener('pointerleave', this.onPointerUp.bind(this)); // Treat pointer leaving canvas as 'up'
+                    this.canvas.addEventListener('wheel', this.onWheel.bind(this), { passive: false }); // Prevent default page scroll
+                }
+
+                /**
+                 * Converts screen coordinates (from mouse/touch) to world space coordinates
+                 * within the Three.js scene. This is crucial for mapping 2D input to 3D effects.
+                 * @param {number} clientX - X coordinate of the pointer on the screen.
+                 * @param {number} clientY - Y coordinate of the pointer on the screen.
+                 * @returns {THREE.Vector3} - The calculated world space position.
+                 */
+                screenToWorld(clientX, clientY) {
+                    const rect = this.canvas.getBoundingClientRect();
+                    // Normalize client coordinates to NDC (-1 to 1)
+                    const x = (clientX - rect.left) / rect.width * 2 - 1;
+                    const y = -(clientY - rect.top) / rect.height * 2 + 1; // Y-axis inverted for WebGL
+
+                    // Create a 3D vector in NDC space, with a Z-component (e.g., 0.5 for near plane)
+                    const vector = new THREE.Vector3(x, y, 0.5);
+                    // Unproject the vector from screen space to world space using the camera
+                    vector.unproject(this.visualEngine.camera);
+
+                    // Retain the current Z-component of the force point for consistent depth interaction,
+                    // as X/Y drags typically manipulate the X/Y position.
+                    vector.z = state.particles.forcePoint.z;
+
+                    return vector;
+                }
+
+                /**
+                 * Handles the start of a pointer interaction (mouse down or touch start).
+                 * @param {PointerEvent} event - The pointer event object.
+                 */
+                onPointerDown(event) {
+                    if (event.pointerType === 'mouse' && event.button !== 0) return; // Only respond to left-click or primary touch
+                    this.isDragging = true;
+                    this.lastPointerPos.x = event.clientX;
+                    this.lastPointerPos.y = event.clientY;
+                    this.pointerDownTime = Date.now();
+
+                    this.showFeedbackRipple(event.clientX, event.clientY); // Visual feedback
+
+                    // Trigger subtle audio feedback for interaction start
+                    if (this.audioEngine.initialized) {
+                        const synth = new Tone.Synth().toDestination();
+                        synth.triggerAttackRelease("C3", "32n"); // Short, low frequency click
+                        synth.dispose(); // Clean up synth
+                    }
+
+                    // Immediately update the force point visual and audio parameters
+                    const newForcePoint = this.screenToWorld(event.clientX, event.clientY);
+                    setState({ particles: { ...state.particles, forcePoint: newForcePoint } });
+                }
+
+                /**
+                 * Handles pointer movement (mouse drag or touch move).
+                 * @param {PointerEvent} event - The pointer event object.
+                 */
+                onPointerMove(event) {
+                    if (!this.isDragging) return;
+
+                    this.currentPointerPos.x = event.clientX;
+                    this.currentPointerPos.y = event.clientY;
+
+                    // Calculate delta for gesture interpretation
+                    const dx = this.currentPointerPos.x - this.lastPointerPos.x;
+                    const dy = this.currentPointerPos.y - this.lastPointerPos.y;
+
+                    // Update force point based on drag, keeping its current Z-depth
+                    const newForcePoint = this.screenToWorld(event.clientX, event.clientY);
+                    newForcePoint.z = state.particles.forcePoint.z; // Maintain Z-depth
+                    setState({ particles: { ...state.particles, forcePoint: newForcePoint } });
+
+                    // Map drag magnitude to a temporary boost in force strength
+                    // This creates a more dynamic response during active dragging.
+                    const dragMagnitude = Math.sqrt(dx * dx + dy * dy);
+                    const newForceStrength = Math.min(DEFAULT_STATE.particles.forceStrength * 5, DEFAULT_STATE.particles.forceStrength + dragMagnitude * 0.0000005);
+                    setState({ particles: { ...state.particles, forceStrength: newForceStrength } });
+
+                    this.showFeedbackText(event.clientX, event.clientY, `Force: ${newForceStrength.toFixed(6)}`);
+
+                    this.lastPointerPos.x = this.currentPointerPos.x;
+                    this.lastPointerPos.y = this.currentPointerPos.y;
+                }
+
+                /**
+                 * Handles the end of a pointer interaction (mouse up or touch end).
+                 * @param {PointerEvent} event - The pointer event object.
+                 */
+                onPointerUp(event) {
+                    this.isDragging = false;
+                    this.pointerDownTime = 0;
+                    // Reset force strength to its base value after the pointer is released,
+                    // allowing the system to return to a more stable state.
+                    setState({ particles: { ...state.particles, forceStrength: DEFAULT_STATE.particles.forceStrength } });
+                }
+
+                /**
+                 * Handles mouse wheel (scroll) events.
+                 * @param {WheelEvent} event - The wheel event object.
+                 */
+                onWheel(event) {
+                    event.preventDefault(); // Prevent page scroll
+
+                    const scrollDelta = event.deltaY; // Negative for scroll up (push), positive for scroll down (pull)
+
+                    // Map scroll to Z-depth of force point ("push/pull" into/out of screen)
+                    let newZ = state.particles.forcePoint.z - scrollDelta * 0.0005;
+                    newZ = Math.max(-0.5, Math.min(0.5, newZ)); // Clamp Z within a reasonable world-space range
+                    setState({ particles: { ...state.particles, forcePoint: new THREE.Vector3(state.particles.forcePoint.x, state.particles.forcePoint.y, newZ) } });
+
+                    // Map scroll to particle size for direct visual feedback on the general field
+                    let newSize = state.particles.size - scrollDelta * 0.000005;
+                    newSize = Math.max(0.001, Math.min(0.015, newSize)); // Clamp particle size
+                    setState({ particles: { ...state.particles, size: newSize } });
+
+                    this.showFeedbackText(event.clientX, event.clientY, `Depth: ${newZ.toFixed(3)}, Size: ${newSize.toFixed(5)}`);
+
+                    // Trigger subtle audio feedback for scroll interaction
+                    if (this.audioEngine.initialized) {
+                        const synth = new Tone.Synth().toDestination();
+                        synth.triggerAttackRelease("G4", "16n"); // Short, higher frequency click
+                        synth.dispose();
+                    }
+                }
+
+                /**
+                 * Displays a fading ripple effect at the interaction point on the canvas.
+                 * @param {number} x - X coordinate for the ripple center.
+                 * @param {number} y - Y coordinate for the ripple center.
+                 */
+                showFeedbackRipple(x, y) {
+                    const feedbackOverlay = document.getElementById('feedback-overlay');
+                    const ripple = document.createElement('div');
+                    ripple.className = 'feedback-ripple';
+                    ripple.style.left = `${x}px`;
+                    ripple.style.top = `${y}px`;
+                    ripple.style.width = '20px'; // Initial size
+                    ripple.style.height = '20px';
+                    ripple.style.marginLeft = '-10px'; // Center the ripple
+                    ripple.style.marginTop = '-10px';
+                    feedbackOverlay.appendChild(ripple);
+
+                    // Remove the ripple element after its animation completes
+                    ripple.addEventListener('animationend', () => ripple.remove());
+                }
+
+                /**
+                 * Displays transient text indicating which parameter is being affected.
+                 * @param {number} x - X coordinate for the text position.
+                 * @param {number} y - Y coordinate for the text position.
+                 * @param {string} text - The text content to display.
+                 */
+                showFeedbackText(x, y, text) {
+                    const feedbackOverlay = document.getElementById('feedback-overlay');
+                    // Remove previous text to avoid clutter if a new one is generated rapidly
+                    const existingText = feedbackOverlay.querySelector('.feedback-text');
+                    if (existingText) existingText.remove();
+
+                    const textElement = document.createElement('div');
+                    textElement.className = 'feedback-text';
+                    textElement.textContent = text;
+                    // Position relative to interaction point with a slight offset
+                    textElement.style.left = `${x + 15}px`;
+                    textElement.style.top = `${y - 15}px`;
+                    feedbackOverlay.appendChild(textElement);
+
+                    // Automatically remove the text after its animation completes
+                    textElement.addEventListener('animationend', () => textElement.remove());
+                }
+            }
+
+            /**
+             * UI Manager
+             * Handles control panel visibility, interaction with sliders/buttons,
+             * and composition management (save/load/randomize/reset).
+             */
+            class UIManager {
+                constructor() {
+                    // Get references to UI elements
+                    this.toggleBtn = document.getElementById('toggle-panel-btn');
+                    this.controlPanel = document.getElementById('control-panel');
+                    this.paramControlsDiv = document.getElementById('parameter-controls');
+                    this.modelSelect = document.getElementById('model-select');
+                    this.masterVolumeSlider = document.getElementById('master-volume');
+                    this.saveBtn = document.getElementById('save-btn');
+                    this.loadBtn = document.getElementById('load-btn');
+                    this.randomizeBtn = document.getElementById('randomize-btn');
+                    this.resetBtn = document.getElementById('reset-btn');
+
+                    // Attach event listeners to UI controls
+                    this.toggleBtn.addEventListener('click', this.togglePanel.bind(this));
+                    this.masterVolumeSlider.addEventListener('input', this.onMasterVolumeChange.bind(this));
+                    this.saveBtn.addEventListener('click', this.saveComposition.bind(this));
+                    this.loadBtn.addEventListener('click', this.loadComposition.bind(this));
+                    this.randomizeBtn.addEventListener('click', this.randomizeParameters.bind(this));
+                    this.resetBtn.addEventListener('click', this.resetParameters.bind(this));
+
+                    subscribe(this.onStateChange.bind(this)); // Subscribe to global state changes
+                    this.renderParameterControls(state.particles); // Initial render of particle controls
+                }
+
+                /**
+                 * Toggles the visibility of the control panel.
+                 */
+                togglePanel() {
+                    setState({ isPanelOpen: !state.isPanelOpen });
+                }
+
+                /**
+                 * Updates UI elements when global state changes.
+                 * @param {object} newState - The updated global application state.
+                 */
+                onStateChange(newState) {
+                    this.masterVolumeSlider.value = newState.audio.masterVolume;
+                    // Apply 'is-open' class to control panel based on state
+                    this.controlPanel.classList.toggle('is-open', newState.isPanelOpen);
+                    // Update ARIA attribute for accessibility
+                    this.toggleBtn.setAttribute('aria-expanded', newState.isPanelOpen);
+                    // Update parameter slider values, especially after load/randomize/reset
+                    this.updateParameterControlValues(newState.particles);
+                }
+
+                /**
+                 * Dynamically renders sliders for particle system parameters.
+                 * This function is called once at initialization and could be extended
+                 * to re-render for different generative models.
+                 * @param {object} params - The current parameters of the active generative model.
+                 */
+                renderParameterControls(params) {
+                    this.paramControlsDiv.innerHTML = ''; // Clear existing controls before rendering
+
+                    // Define which parameters should have UI sliders and their properties (min, max, step, display precision)
+                    const paramDefinitions = {
+                        size: { label: 'Particle Size', min: 0.001, max: 0.015, step: 0.0001, precision: 5 },
+                        attractionRadius: { label: 'Attraction Radius', min: 0.05, max: 0.5, step: 0.01, precision: 2 },
+                        repulsionRadius: { label: 'Repulsion Radius', min: 0.01, max: 0.1, step: 0.005, precision: 3 },
+                        forceStrength: { label: 'Base Force Strength', min: 0.00001, max: 0.0003, step: 0.00001, precision: 6 },
+                        // Color parameters (colorStart, colorEnd) would ideally use color pickers,
+                        // but are not implemented as sliders for simplicity in this demo.
+                    };
+
+                    for (const key in paramDefinitions) {
+                        if (paramDefinitions.hasOwnProperty(key)) {
+                            const def = paramDefinitions[key];
+                            const currentValue = params[key];
+
+                            if (currentValue === undefined) continue; // Skip if parameter not found in current model
+
+                            // Create DOM elements for each slider
+                            const div = document.createElement('div');
+                            div.className = 'flex flex-col';
+
+                            const label = document.createElement('label');
+                            label.htmlFor = `param-${key}`;
+                            label.className = 'block text-sm font-medium text-gray-300 mb-1';
+                            label.textContent = def.label;
+
+                            const input = document.createElement('input');
+                            input.type = 'range';
+                            input.id = `param-${key}`;
+                            input.min = def.min;
+                            input.max = def.max;
+                            input.step = def.step;
+                            input.value = currentValue;
+                            input.className = 'w-full h-2 bg-gray-600 rounded-lg appearance-none cursor-pointer';
+                            input.setAttribute('aria-label', def.label);
+
+                            const valueDisplay = document.createElement('span');
+                            valueDisplay.className = 'text-xs text-gray-400 mt-1 self-end';
+                            valueDisplay.textContent = currentValue.toFixed(def.precision);
+
+                            // Add event listener for slider input
+                            input.addEventListener('input', (e) => {
+                                const newValue = parseFloat(e.target.value);
+                                setState({ particles: { ...state.particles, [key]: newValue } }); // Update global state
+                                valueDisplay.textContent = newValue.toFixed(def.precision); // Update displayed value
+                            });
+
+                            // Append elements to the controls div
+                            div.appendChild(label);
+                            div.appendChild(input);
+                            div.appendChild(valueDisplay);
+                            this.paramControlsDiv.appendChild(div);
+                        }
+                    }
+                }
+
+                /**
+                 * Updates the values displayed on existing parameter sliders without re-rendering them.
+                 * This is more efficient for frequent state updates.
+                 * @param {object} params - The current parameters of the active generative model.
+                 */
+                updateParameterControlValues(params) {
+                    // This object must mirror the keys defined in `renderParameterControls`
+                    const paramDefinitions = {
+                        size: { precision: 5 },
+                        attractionRadius: { precision: 2 },
+                        repulsionRadius: { precision: 3 },
+                        forceStrength: { precision: 6 },
+                    };
+
+                    for (const key in paramDefinitions) {
+                        const input = document.getElementById(`param-${key}`);
+                        // The value display span is assumed to be the next sibling of the input
+                        const valueDisplay = input ? input.nextElementSibling : null;
+
+                        if (input && valueDisplay) {
+                            input.value = params[key]; // Update slider position
+                            valueDisplay.textContent = params[key].toFixed(paramDefinitions[key].precision); // Update text
+                        }
+                    }
+                }
+
+                /**
+                 * Handles changes to the master volume slider, updating the global audio state.
+                 * @param {Event} event - The input event from the slider.
+                 */
+                onMasterVolumeChange(event) {
+                    setState({ audio: { ...state.audio, masterVolume: parseFloat(event.target.value) } });
+                }
+
+                /**
+                 * Saves the current application state to the browser's local storage.
+                 * This allows users to persist their compositions locally.
+                 */
+                saveComposition() {
+                    try {
+                        // Prepare state for serialization: convert THREE.Vector3 to a plain array
+                        const savableState = {
+                            ...state,
+                            particles: {
+                                ...state.particles,
+                                forcePoint: state.particles.forcePoint.toArray()
+                            }
+                        };
+                        const serializedState = JSON.stringify(savableState);
+                        localStorage.setItem('sculptingEmergenceComposition', serializedState);
+                        alert('Composition saved to local storage!');
+                    } catch (e) {
+                        console.error('Failed to save composition:', e);
+                        alert('Error saving composition.');
+                    }
+                }
+
+                /**
+                 * Loads a previously saved application state from the browser's local storage.
+                 */
+                loadComposition() {
+                    try {
+                        const serializedState = localStorage.getItem('sculptingEmergenceComposition');
+                        if (serializedState) {
+                            const loadedState = JSON.parse(serializedState);
+                            // Convert forcePoint array back to THREE.Vector3 if it exists
+                            if (loadedState.particles && Array.isArray(loadedState.particles.forcePoint)) {
+                                loadedState.particles.forcePoint = new THREE.Vector3(...loadedState.particles.forcePoint);
+                            }
+                            // Update global state with the loaded state. setState handles deep merging.
+                            setState(loadedState);
+                            alert('Composition loaded from local storage!');
+                        } else {
+                            alert('No saved composition found.');
+                        }
+                    } catch (e) {
+                        console.error('Failed to load composition:', e);
+                        alert('Error loading composition.');
+                    }
+                }
+
+                /**
+                 * Randomizes a subset of generative parameters within sensible bounds.
+                 * This assists users in exploring the vast parameter space.
+                 */
+                randomizeParameters() {
+                    const newParticles = { ...state.particles };
+                    const paramBounds = {
+                        size: { min: 0.001, max: 0.015, step: 0.0001 },
+                        attractionRadius: { min: 0.1, max: 0.4, step: 0.01 },
+                        repulsionRadius: { min: 0.01, max: 0.05, step: 0.005 },
+                        forceStrength: { min: 0.00005, max: 0.0003, step: 0.00001 },
+                    };
+
+                    // Apply random values within defined bounds for each parameter
+                    for (const key in paramBounds) {
+                        const bounds = paramBounds[key];
+                        let newValue = bounds.min + Math.random() * (bounds.max - bounds.min);
+                        newParticles[key] = Math.round(newValue / bounds.step) * bounds.step; // Round to nearest step
+                    }
+                    // Randomize start and end colors
+                    newParticles.colorStart = [Math.random(), Math.random(), Math.random()];
+                    newParticles.colorEnd = [Math.random(), Math.random(), Math.random()];
+
+                    setState({ particles: newParticles }); // Update state
+                    alert('Parameters randomized!');
+                }
+
+                /**
+                 * Resets all parameters to their default initial values.
+                 */
+                resetParameters() {
+                    // Reset to a fresh deep copy of the default state
+                    setState(JSON.parse(JSON.stringify(DEFAULT_STATE)));
+                    alert('Parameters reset to default!');
+                }
+            }
+
+            // --- Initialize Application Components ---
+            const canvasContainer = document.getElementById('canvas-container');
+            const visualEngine = new VisualEngine(canvasContainer);
+            const audioEngine = new AudioEngine();
+            // Pass the renderer's DOM element for input capture
+            const inputManager = new InputManager(visualEngine.renderer.domElement, visualEngine, audioEngine);
+            const uiManager = new UIManager();
+
+            // --- Main Animation Loop ---
+            let lastTime = 0;
+            function animate(time) {
+                requestAnimationFrame(animate); // Request next frame
+
+                const deltaTime = (time - lastTime) / 1000; // Calculate delta time in seconds
+                lastTime = time;
+
+                visualEngine.render(deltaTime); // Render the visual scene
+                // Audio engine updates are primarily driven by state changes and Tone.js's internal clock,
+                // so no explicit `audioEngine.render()` call is typically needed here.
+            }
+
+            requestAnimationFrame(animate); // Start the animation loop
+        }
+    </script>
+
+    <div style="position:fixed;bottom:10px;right:10px;background:rgba(0,0,0,0.7);color:white;padding:5px 10px;border-radius:5px;font-family:sans-serif;font-size:12px">
+        Created by Dakota Rain Lock, powered by Holy Grail. A Dakota Rain Lock Invention.
+    </div>
+    
+</body>
+</html>
